@@ -67,4 +67,4 @@ React + Vite、Vue + Vite、Node Express、Python Flask 模板需要有效的 AP
 
 ## 文档
 
-完整文档：[docs.sandbox.talon.net.cn](https://docs.sandbox.talon.net.cn)
+完整文档：[github.com/talon-org/agent-sandbox-docs](https://github.com/talon-org/agent-sandbox-docs)（文档站建设中）
