@@ -25,8 +25,7 @@ import type { ProjectFile } from '../types';
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const API_BASE: string =
-  (import.meta.env['VITE_SANDBOX_API_BASE'] as string | undefined) ??
-  'https://api.sandbox.talon.net.cn';
+  (import.meta.env['VITE_SANDBOX_API_BASE'] as string | undefined) ?? '/api';
 
 const API_KEY: string =
   (import.meta.env['VITE_SANDBOX_API_KEY'] as string | undefined) ?? '';
