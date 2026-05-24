@@ -15,4 +15,6 @@ export interface SandboxState {
   status: 'idle' | 'starting' | 'running' | 'error';
   previewUrl: string | null;
   logs: string[];
+  /** Current human-readable phase label shown in the UI during run. */
+  phase?: string;
 }
