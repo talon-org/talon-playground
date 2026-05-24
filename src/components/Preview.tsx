@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useStore } from '../store';
 import { TEMPLATE_LABELS } from '../templates';
 
@@ -7,9 +8,18 @@ export function Preview() {
     project: s.project,
   }));
 
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
   const isIdle = sandbox.status === 'idle';
   const isStarting = sandbox.status === 'starting';
   const hasUrl = Boolean(sandbox.previewUrl);
+
+  const handleRefresh = () => {
+    if (iframeRef.current) {
+      // Reassigning src forces reload without creating blob URL issues
+      iframeRef.current.src = iframeRef.current.src;
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
@@ -34,6 +44,36 @@ export function Preview() {
         )}
       </div>
 
+      {/* Preview URL bar — only when we have a URL */}
+      {hasUrl && sandbox.previewUrl && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-850 border-b border-gray-700 shrink-0 bg-gray-800/60">
+          <span
+            className="flex-1 text-[11px] text-blue-300 font-mono truncate select-all"
+            title={sandbox.previewUrl}
+          >
+            {sandbox.previewUrl}
+          </span>
+          <a
+            href={sandbox.previewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-gray-400 hover:text-blue-300 transition-colors shrink-0"
+            aria-label="Open preview in new tab"
+            title="Open in new tab"
+          >
+            &#8599;
+          </a>
+          <button
+            onClick={handleRefresh}
+            className="text-[11px] text-gray-400 hover:text-blue-300 transition-colors shrink-0"
+            aria-label="Reload preview iframe"
+            title="Reload"
+          >
+            &#8635;
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 relative">
         {isIdle && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-600">
@@ -54,6 +94,7 @@ export function Preview() {
         {/* Iframe shown once we have a URL */}
         {hasUrl && (
           <iframe
+            ref={iframeRef}
             key={sandbox.previewUrl}
             src={sandbox.previewUrl ?? 'about:blank'}
             title="Preview"

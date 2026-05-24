@@ -1,4 +1,5 @@
-import MonacoEditor from '@monaco-editor/react';
+import type { editor } from 'monaco-editor';
+import MonacoEditor, { loader } from '@monaco-editor/react';
 import { useStore } from '../store';
 
 function guessLanguage(path: string): string {
@@ -14,10 +15,17 @@ function guessLanguage(path: string): string {
   return 'plaintext';
 }
 
+// Monaco KeyCode / KeyMod constants (from monaco-editor source, stable values)
+// CtrlCmd = 2048 (platform-aware: Ctrl on Win/Linux, Cmd on Mac)
+// KeyS    = 49
+const CTRL_CMD = 2048;
+const KEY_S = 49;
+
 export function Editor() {
-  const { project, updateFileContent } = useStore((s) => ({
+  const { project, updateFileContent, run } = useStore((s) => ({
     project: s.project,
     updateFileContent: s.updateFileContent,
+    run: s.run,
   }));
 
   const activeFile = project.files.find((f) => f.path === project.entry);
@@ -29,8 +37,28 @@ export function Editor() {
     }
   };
 
+  const handleMount = (editorInstance: editor.IStandaloneCodeEditor) => {
+    // Task 5: Cmd+S (Mac) / Ctrl+S (Win/Linux) → trigger run.
+    // addCommand uses Monaco's built-in key binding; the browser save dialog
+    // is suppressed because Monaco intercepts keydown at the editor level.
+    editorInstance.addCommand(CTRL_CMD | KEY_S, () => {
+      run();
+    });
+  };
+
+  // Prevent beforeunload from treating Ctrl+S as a browser save shortcut
+  // when focus is outside Monaco. (Monaco itself handles this inside its canvas.)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+    }
+  };
+
   return (
-    <div className="h-full w-full flex flex-col bg-gray-950">
+    <div
+      className="h-full w-full flex flex-col bg-gray-950"
+      onKeyDown={handleKeyDown}
+    >
       <div className="px-3 py-1 bg-gray-800 border-b border-gray-700 text-xs text-gray-400 shrink-0">
         {project.entry}
       </div>
@@ -42,6 +70,7 @@ export function Editor() {
           theme="vs-dark"
           value={activeFile?.content ?? ''}
           onChange={handleChange}
+          onMount={handleMount}
           options={{
             fontSize: 13,
             fontFamily: '"JetBrains Mono", "Fira Code", monospace',
@@ -57,3 +86,6 @@ export function Editor() {
     </div>
   );
 }
+
+// Suppress unused import warning — loader is used indirectly by MonacoEditor
+void loader;
