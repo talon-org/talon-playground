@@ -7,13 +7,15 @@ function fileIcon(path: string): string {
   if (path.endsWith('.ts') || path.endsWith('.tsx')) return 'T';
   if (path.endsWith('.vue')) return 'V';
   if (path.endsWith('.py')) return 'P';
+  if (path.endsWith('.md')) return 'M';
   return 'F';
 }
 
 export function FileTree() {
-  const { project, setActiveFile } = useStore((s) => ({
+  const { project, openFile, activeTab } = useStore((s) => ({
     project: s.project,
-    setActiveFile: s.setActiveFile,
+    openFile: s.openFile,
+    activeTab: s.activeTab,
   }));
 
   return (
@@ -26,11 +28,11 @@ export function FileTree() {
       </div>
       <ul className="flex-1 py-1">
         {project.files.map((file) => {
-          const isActive = file.path === project.entry;
+          const isActive = file.path === activeTab;
           return (
             <li key={file.path}>
               <button
-                onClick={() => setActiveFile(file.path)}
+                onClick={() => openFile(file.path)}
                 className={[
                   'w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs truncate transition-colors',
                   isActive

@@ -12,6 +12,7 @@ function guessLanguage(path: string): string {
   if (path.endsWith('.vue')) return 'html';
   if (path.endsWith('.py')) return 'python';
   if (path.endsWith('.json')) return 'json';
+  if (path.endsWith('.md')) return 'markdown';
   return 'plaintext';
 }
 
@@ -22,66 +23,130 @@ const CTRL_CMD = 2048;
 const KEY_S = 49;
 
 export function Editor() {
-  const { project, updateFileContent, run } = useStore((s) => ({
-    project: s.project,
-    updateFileContent: s.updateFileContent,
-    run: s.run,
-  }));
+  const { project, updateFileContent, run, openTabs, activeTab, closeTab, setActiveTab, autosavePending } =
+    useStore((s) => ({
+      project: s.project,
+      updateFileContent: s.updateFileContent,
+      run: s.run,
+      openTabs: s.openTabs,
+      activeTab: s.activeTab,
+      closeTab: s.closeTab,
+      setActiveTab: s.setActiveTab,
+      autosavePending: s.autosavePending,
+    }));
 
-  const activeFile = project.files.find((f) => f.path === project.entry);
-  const language = guessLanguage(project.entry);
+  const activeFile = project.files.find((f) => f.path === activeTab);
+  const language = activeTab ? guessLanguage(activeTab) : 'plaintext';
 
   const handleChange = (value: string | undefined) => {
-    if (value !== undefined) {
-      updateFileContent(project.entry, value);
+    if (value !== undefined && activeTab) {
+      updateFileContent(activeTab, value);
     }
   };
 
   const handleMount = (editorInstance: editor.IStandaloneCodeEditor) => {
-    // Task 5: Cmd+S (Mac) / Ctrl+S (Win/Linux) → trigger run.
-    // addCommand uses Monaco's built-in key binding; the browser save dialog
-    // is suppressed because Monaco intercepts keydown at the editor level.
     editorInstance.addCommand(CTRL_CMD | KEY_S, () => {
       run();
     });
   };
 
-  // Prevent beforeunload from treating Ctrl+S as a browser save shortcut
-  // when focus is outside Monaco. (Monaco itself handles this inside its canvas.)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
     }
   };
 
+  // No tabs open
+  if (openTabs.length === 0) {
+    return (
+      <div className="h-full w-full flex flex-col bg-gray-950">
+        <div className="flex-1 flex items-center justify-center text-gray-600 text-sm select-none">
+          选一个文件开始编辑
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="h-full w-full flex flex-col bg-gray-950"
       onKeyDown={handleKeyDown}
     >
-      <div className="px-3 py-1 bg-gray-800 border-b border-gray-700 text-xs text-gray-400 shrink-0">
-        {project.entry}
+      {/* Tab bar */}
+      <div
+        className="flex items-end bg-gray-900 border-b border-gray-700 shrink-0 overflow-x-auto"
+        role="tablist"
+        aria-label="Open file tabs"
+      >
+        {openTabs.map((tabPath) => {
+          const isActive = tabPath === activeTab;
+          const fileName = tabPath.split('/').pop() ?? tabPath;
+          return (
+            <div
+              key={tabPath}
+              role="tab"
+              aria-selected={isActive}
+              className={[
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer border-r border-gray-700 shrink-0 max-w-[160px] group',
+                isActive
+                  ? 'bg-gray-950 text-white border-t-2 border-t-blue-500'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-850 hover:text-gray-200',
+              ].join(' ')}
+              onClick={() => setActiveTab(tabPath)}
+              title={tabPath}
+            >
+              {/* Autosave pending dot */}
+              {isActive && autosavePending && (
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0"
+                  aria-label="Unsaved"
+                  title="Saving..."
+                />
+              )}
+              <span className="truncate">{fileName}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(tabPath);
+                }}
+                className="ml-auto shrink-0 text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity leading-none"
+                aria-label={`Close tab ${fileName}`}
+                tabIndex={0}
+              >
+                &times;
+              </button>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Editor area */}
       <div className="flex-1 min-h-0">
-        <MonacoEditor
-          key={project.entry}
-          height="100%"
-          language={language}
-          theme="vs-dark"
-          value={activeFile?.content ?? ''}
-          onChange={handleChange}
-          onMount={handleMount}
-          options={{
-            fontSize: 13,
-            fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            renderLineHighlight: 'line',
-            tabSize: 2,
-            wordWrap: 'on',
-            automaticLayout: true,
-          }}
-        />
+        {activeFile ? (
+          <MonacoEditor
+            key={activeTab}
+            height="100%"
+            language={language}
+            theme="vs-dark"
+            value={activeFile.content}
+            onChange={handleChange}
+            onMount={handleMount}
+            options={{
+              fontSize: 13,
+              fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              renderLineHighlight: 'line',
+              tabSize: 2,
+              wordWrap: 'on',
+              automaticLayout: true,
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-600 text-sm select-none">
+            选一个文件开始编辑
+          </div>
+        )}
       </div>
     </div>
   );
