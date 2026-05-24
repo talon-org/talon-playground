@@ -11,20 +11,69 @@ interface TopBarProps {
 const TEMPLATE_IDS = Object.keys(TEMPLATE_LABELS) as TemplateId[];
 
 export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
-  const { project, selectTemplate, run, sandbox } = useStore((s) => ({
+  const { project, selectTemplate, run, stop, sandbox, dirty } = useStore((s) => ({
     project: s.project,
     selectTemplate: s.selectTemplate,
     run: s.run,
+    stop: s.stop,
     sandbox: s.sandbox,
+    dirty: s.dirty,
   }));
 
   const handleTemplateChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    selectTemplate(e.target.value as TemplateId);
+    const newId = e.target.value as TemplateId;
+    // Task 6: confirm if editor has unsaved changes
+    if (dirty) {
+      const ok = window.confirm('切换模板会丢失当前修改，继续？');
+      if (!ok) {
+        // Reset select value visually by re-rendering (React controlled)
+        return;
+      }
+    }
+    selectTemplate(newId);
   };
 
   const isStarting = sandbox.status === 'starting';
   const isRunning = sandbox.status === 'running';
+  const isError = sandbox.status === 'error';
   const isBusy = isStarting || isRunning;
+
+  // Determine button mode
+  let runButton: React.ReactNode;
+  if (isBusy) {
+    runButton = (
+      <button
+        onClick={stop}
+        className="flex items-center gap-1 text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors"
+        aria-label="Stop sandbox"
+      >
+        <span className="inline-block w-2 h-2 bg-white" aria-hidden="true" />
+        Stop
+      </button>
+    );
+  } else if (isError) {
+    runButton = (
+      <button
+        onClick={run}
+        className="flex items-center gap-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white px-3 py-1 rounded transition-colors"
+        aria-label="Retry run"
+      >
+        <span aria-hidden="true">&#8635;</span>
+        Retry
+      </button>
+    );
+  } else {
+    runButton = (
+      <button
+        onClick={run}
+        className="flex items-center gap-1 text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded transition-colors"
+        aria-label="Run project"
+      >
+        <span aria-hidden="true">&#9654;</span>
+        Run
+      </button>
+    );
+  }
 
   return (
     <header className="flex items-center gap-3 px-4 h-12 bg-gray-900 border-b border-gray-700 shrink-0">
@@ -69,22 +118,7 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
         Terminal {terminalVisible ? '[hide]' : '[show]'}
       </button>
 
-      <button
-        onClick={run}
-        disabled={isBusy}
-        className="flex items-center gap-1 text-xs bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1 rounded transition-colors"
-        aria-label="Run project"
-        aria-busy={isStarting}
-      >
-        {isStarting ? (
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
-            Running...
-          </span>
-        ) : (
-          'Run'
-        )}
-      </button>
+      {runButton}
 
       <button
         className="flex items-center gap-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1 rounded transition-colors"
