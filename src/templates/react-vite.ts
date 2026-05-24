@@ -115,6 +115,16 @@ export default function App() {
 `,
     },
     {
+      path: 'README.md',
+      content: `# React + Vite 模板
+
+这是 **React + Vite** 模板，点击顶部 **Run** 按钮启动。
+
+- 热更新 (HMR) 已配置，编辑 \`src/App.tsx\` 保存后立即生效。
+- 运行在 Talon Sandbox 云端容器中，无需本地安装任何依赖。
+`,
+    },
+    {
       path: 'src/index.css',
       content: `:root {
   font-family: system-ui, sans-serif;

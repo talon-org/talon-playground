@@ -82,6 +82,16 @@ createApp(App).mount('#app');
 `,
     },
     {
+      path: 'README.md',
+      content: `# Vue 3 + Vite 模板
+
+这是 **Vue 3 + Vite** 模板，点击顶部 **Run** 按钮启动。
+
+- 热更新 (HMR) 已配置，编辑 \`src/App.vue\` 保存后立即生效。
+- 运行在 Talon Sandbox 云端容器中，无需本地安装任何依赖。
+`,
+    },
+    {
       path: 'src/App.vue',
       content: `<script setup lang="ts">
 import { ref } from 'vue';

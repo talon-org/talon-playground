@@ -21,6 +21,17 @@ export const nodeExpressTemplate: Project = {
 `,
     },
     {
+      path: 'README.md',
+      content: `# Node Express 模板
+
+这是 **Node.js + Express** 模板，点击顶部 **Run** 按钮启动。
+
+- 服务监听端口 3000，启动后可在右侧 Preview 中访问。
+- 提供示例路由 \`GET /\` 和 \`GET /api/hello\`。
+- 运行在 Talon Sandbox 云端容器中，无需本地安装任何依赖。
+`,
+    },
+    {
       path: 'index.js',
       content: `const express = require('express');
 

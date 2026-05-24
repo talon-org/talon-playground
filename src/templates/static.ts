@@ -41,6 +41,16 @@ h1 {
 `,
     },
     {
+      path: 'README.md',
+      content: `# Static HTML/CSS/JS 模板
+
+这是 **静态 HTML/CSS/JS** 模板，点击顶部 **Run** 按钮预览。
+
+- 无需服务器，直接在浏览器中渲染。
+- 编辑 \`index.html\`、\`style.css\`、\`script.js\`，点 Run 立即查看效果。
+`,
+    },
+    {
       path: 'script.js',
       content: `console.log('Hello from Talon Playground!');
 `,

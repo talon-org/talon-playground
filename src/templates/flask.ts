@@ -10,6 +10,17 @@ export const flaskTemplate: Project = {
 `,
     },
     {
+      path: 'README.md',
+      content: `# Python Flask 模板
+
+这是 **Python Flask** 模板，点击顶部 **Run** 按钮启动。
+
+- 服务监听端口 5000，启动后可在右侧 Preview 中访问。
+- 提供示例路由 \`GET /\` 和 \`GET /api/hello\`。
+- 运行在 Talon Sandbox 云端容器中，无需本地安装任何依赖。
+`,
+    },
+    {
       path: 'app.py',
       content: `from flask import Flask, jsonify
 import datetime
