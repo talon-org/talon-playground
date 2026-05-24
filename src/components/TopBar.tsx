@@ -85,7 +85,7 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
         role="banner"
       >
         <span className="text-fg-0 font-semibold text-sm tracking-wide select-none">
-          Talon Playground
+          Talon Sandbox Playground
         </span>
 
         <div className="flex items-center gap-1.5 ml-2">
