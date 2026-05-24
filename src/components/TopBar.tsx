@@ -22,7 +22,9 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
     selectTemplate(e.target.value as TemplateId);
   };
 
-  const isRunning = sandbox.status === 'running' || sandbox.status === 'starting';
+  const isStarting = sandbox.status === 'starting';
+  const isRunning = sandbox.status === 'running';
+  const isBusy = isStarting || isRunning;
 
   return (
     <header className="flex items-center gap-3 px-4 h-12 bg-gray-900 border-b border-gray-700 shrink-0">
@@ -38,7 +40,8 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
           id="template-select"
           value={project.template}
           onChange={handleTemplateChange}
-          className="bg-gray-800 text-gray-200 text-xs rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500"
+          disabled={isBusy}
+          className="bg-gray-800 text-gray-200 text-xs rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
         >
           {TEMPLATE_IDS.map((id) => (
             <option key={id} value={id}>
@@ -47,6 +50,13 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
           ))}
         </select>
       </div>
+
+      {/* Phase label shown while starting */}
+      {isStarting && sandbox.phase && (
+        <span className="text-yellow-400 text-xs animate-pulse select-none">
+          {sandbox.phase}
+        </span>
+      )}
 
       <div className="flex-1" />
 
@@ -61,17 +71,25 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
 
       <button
         onClick={run}
-        disabled={isRunning}
+        disabled={isBusy}
         className="flex items-center gap-1 text-xs bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1 rounded transition-colors"
         aria-label="Run project"
+        aria-busy={isStarting}
       >
-        Run
+        {isStarting ? (
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+            Running...
+          </span>
+        ) : (
+          'Run'
+        )}
       </button>
 
       <button
         className="flex items-center gap-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1 rounded transition-colors"
         aria-label="Share project"
-        onClick={() => alert('Share: W3 feature')}
+        onClick={() => alert('Share: W5 feature')}
       >
         Share
       </button>

@@ -8,6 +8,8 @@ export function Preview() {
   }));
 
   const isIdle = sandbox.status === 'idle';
+  const isStarting = sandbox.status === 'starting';
+  const hasUrl = Boolean(sandbox.previewUrl);
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
@@ -20,23 +22,39 @@ export function Preview() {
               sandbox.status === 'running' ? 'bg-green-800 text-green-200' : '',
               sandbox.status === 'starting' ? 'bg-yellow-800 text-yellow-200' : '',
               sandbox.status === 'error' ? 'bg-red-800 text-red-200' : '',
-            ].join(' ')}
+            ]
+              .filter(Boolean)
+              .join(' ')}
           >
             {sandbox.status}
           </span>
         )}
+        {sandbox.status !== 'idle' && sandbox.phase && (
+          <span className="text-gray-500 text-[10px]">{sandbox.phase}</span>
+        )}
       </div>
 
       <div className="flex-1 relative">
-        {isIdle ? (
+        {isIdle && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-600">
             <div className="text-4xl font-bold text-gray-700">
               {TEMPLATE_LABELS[project.template]}
             </div>
             <div className="text-sm">Press Run to start preview</div>
           </div>
-        ) : (
+        )}
+
+        {isStarting && !hasUrl && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-500">
+            <div className="w-8 h-8 rounded-full border-2 border-yellow-600 border-t-transparent animate-spin" />
+            <div className="text-sm">{sandbox.phase ?? 'Starting...'}</div>
+          </div>
+        )}
+
+        {/* Iframe shown once we have a URL */}
+        {hasUrl && (
           <iframe
+            key={sandbox.previewUrl}
             src={sandbox.previewUrl ?? 'about:blank'}
             title="Preview"
             className="absolute inset-0 w-full h-full border-0 bg-white"
