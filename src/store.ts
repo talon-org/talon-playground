@@ -8,25 +8,37 @@ import {
   runCommand,
   spawnCommand,
   exposePort,
+  streamLogs,
+  killSandbox,
 } from './runtime/sandboxClient';
 
 interface StoreState {
   project: Project;
   sandbox: SandboxState;
+  /** True when editor has unsaved (un-run) changes. Reset on successful run. */
+  dirty: boolean;
   setActiveFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
   selectTemplate: (id: TemplateId) => void;
   run: () => void;
+  stop: () => void;
+  dismissError: () => void;
   appendLog: (line: string) => void;
 }
 
+// Keep the active AbortController so Stop can cancel ongoing work
+let activeController: AbortController | null = null;
+
 export const useStore = create<StoreState>((set, get) => ({
   project: TEMPLATES.static,
+  dirty: false,
   sandbox: {
     status: 'idle',
     previewUrl: null,
+    sandboxId: null,
     logs: [],
     phase: undefined,
+    errorMessage: undefined,
   },
 
   setActiveFile: (path: string) => {
@@ -35,6 +47,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   updateFileContent: (path: string, content: string) => {
     set((state) => ({
+      dirty: true,
       project: {
         ...state.project,
         files: state.project.files.map((f) =>
@@ -47,12 +60,30 @@ export const useStore = create<StoreState>((set, get) => ({
   selectTemplate: (id: TemplateId) => {
     set({
       project: TEMPLATES[id],
-      sandbox: { status: 'idle', previewUrl: null, logs: [], phase: undefined },
+      dirty: false,
+      sandbox: {
+        status: 'idle',
+        previewUrl: null,
+        sandboxId: null,
+        logs: [],
+        phase: undefined,
+        errorMessage: undefined,
+      },
     });
   },
 
   run: () => {
-    const { project } = get();
+    const { project, sandbox } = get();
+
+    // Cancel any previous run
+    if (activeController) {
+      activeController.abort();
+      activeController = null;
+    }
+    // If there's an active sandbox, destroy it first (fire-and-forget)
+    if (sandbox.sandboxId) {
+      void killSandbox(sandbox.sandboxId);
+    }
 
     if (project.template === 'static') {
       const htmlFile = project.files.find((f) => f.path === 'index.html');
@@ -77,23 +108,32 @@ export const useStore = create<StoreState>((set, get) => ({
       const url = URL.createObjectURL(blob);
 
       set({
+        dirty: false,
         sandbox: {
           status: 'running',
           previewUrl: url,
+          sandboxId: null,
           logs: ['[static] preview rendered via Blob URL'],
           phase: 'Ready',
+          errorMessage: undefined,
         },
       });
       return;
     }
 
     // Non-static: real sandbox
+    const controller = new AbortController();
+    activeController = controller;
+
     set({
+      dirty: false,
       sandbox: {
         status: 'starting',
         previewUrl: null,
+        sandboxId: null,
         logs: [],
         phase: 'Creating sandbox...',
+        errorMessage: undefined,
       },
     });
 
@@ -116,7 +156,36 @@ export const useStore = create<StoreState>((set, get) => ({
       }));
     };
 
-    void runSandbox(project, appendLog, setPhase, setSandboxField);
+    void runSandbox(project, appendLog, setPhase, setSandboxField, controller);
+  },
+
+  stop: () => {
+    // Abort in-flight requests
+    if (activeController) {
+      activeController.abort();
+      activeController = null;
+    }
+    const { sandbox } = get();
+    // Destroy the sandbox (fire-and-forget)
+    if (sandbox.sandboxId) {
+      void killSandbox(sandbox.sandboxId);
+    }
+    set((state) => ({
+      sandbox: {
+        ...state.sandbox,
+        status: 'idle',
+        previewUrl: null,
+        sandboxId: null,
+        phase: undefined,
+        errorMessage: undefined,
+      },
+    }));
+  },
+
+  dismissError: () => {
+    set((state) => ({
+      sandbox: { ...state.sandbox, errorMessage: undefined },
+    }));
   },
 
   appendLog: (line: string) => {
@@ -136,8 +205,8 @@ async function runSandbox(
   appendLog: (line: string) => void,
   setPhase: (phase: string) => void,
   setSandboxField: (partial: Partial<SandboxState>) => void,
+  controller: AbortController,
 ): Promise<void> {
-  const controller = new AbortController();
   const { signal } = controller;
 
   try {
@@ -145,6 +214,7 @@ async function runSandbox(
     setPhase('Creating sandbox...');
     const { id } = await createSandbox(signal);
     appendLog(`[talon] sandbox id: ${id}`);
+    setSandboxField({ sandboxId: id });
 
     // 2. Write files
     setPhase('Writing files...');
@@ -169,7 +239,9 @@ async function runSandbox(
           throw new Error(`npm install failed (exit ${installResult.exitCode})`);
         }
         setPhase('Starting dev server...');
-        await spawnCommand(id, 'npm run dev -- --host 0.0.0.0 --port 5173', signal);
+        const devProcId = await spawnCommand(id, 'npm run dev -- --host 0.0.0.0 --port 5173', signal);
+        // Stream dev-server logs until stop is called
+        void streamLogs(id, devProcId, (line) => appendLog(`[dev] ${line}`), signal);
         break;
       }
 
@@ -186,7 +258,8 @@ async function runSandbox(
           throw new Error(`npm install failed (exit ${installResult.exitCode})`);
         }
         setPhase('Starting server...');
-        await spawnCommand(id, 'node index.js', signal);
+        const nodeProcId = await spawnCommand(id, 'node index.js', signal);
+        void streamLogs(id, nodeProcId, (line) => appendLog(`[server] ${line}`), signal);
         break;
       }
 
@@ -203,7 +276,8 @@ async function runSandbox(
           throw new Error(`pip install failed (exit ${pipResult.exitCode})`);
         }
         setPhase('Starting Flask app...');
-        await spawnCommand(id, 'python app.py', signal);
+        const flaskProcId = await spawnCommand(id, 'python app.py', signal);
+        void streamLogs(id, flaskProcId, (line) => appendLog(`[flask] ${line}`), signal);
         break;
       }
 
@@ -231,6 +305,6 @@ async function runSandbox(
           : String(err);
 
     appendLog(`[error] ${message}`);
-    setSandboxField({ status: 'error', phase: 'Error' });
+    setSandboxField({ status: 'error', phase: 'Error', errorMessage: message });
   }
 }

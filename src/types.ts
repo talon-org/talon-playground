@@ -14,7 +14,11 @@ export interface Project {
 export interface SandboxState {
   status: 'idle' | 'starting' | 'running' | 'error';
   previewUrl: string | null;
+  /** Active sandbox ID — needed to stop/kill it. */
+  sandboxId: string | null;
   logs: string[];
   /** Current human-readable phase label shown in the UI during run. */
   phase?: string;
+  /** Last error message for the error banner. */
+  errorMessage?: string;
 }

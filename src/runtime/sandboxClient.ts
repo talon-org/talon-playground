@@ -4,11 +4,20 @@
  * Endpoints confirmed against:
  *   agent-sandbox-platform/api/openapi.yaml
  *
- *   POST   /v1/sandboxes                   → CreateSandboxRequest / Sandbox
- *   PUT    /v1/sandboxes/{id}/fs/{path}     → write file (octet-stream body)
- *   POST   /v1/sandboxes/{id}/processes     → StartProcessRequest / Process
- *   POST   /v1/sandboxes/{id}/expose        → ExposeRequest / ExposeResponse
- *   DELETE /v1/sandboxes/{id}               → kill sandbox
+ *   POST   /v1/sandboxes                              → CreateSandboxRequest / Sandbox
+ *   PUT    /v1/sandboxes/{id}/fs/{path}               → write file (octet-stream body)
+ *   POST   /v1/sandboxes/{id}/processes               → StartProcessRequest / Process
+ *   GET    /v1/sandboxes/{id}/processes               → ProcessList (poll for state)
+ *   GET    /v1/sandboxes/{id}/processes/{id}/logs     → text/plain tail (byte-offset polling)
+ *   POST   /v1/sandboxes/{id}/expose                  → ExposeRequest / ExposeResponse
+ *   DELETE /v1/sandboxes/{id}                         → kill sandbox
+ *
+ * Log streaming note: the OpenAPI spec (v1.0.0) has no WebSocket/SSE/follow
+ * endpoint for process logs — only a snapshot GET with optional ?tail= bytes.
+ * We implement "streaming" as incremental polling: track byteOffset, fetch
+ * only new bytes on each tick (200 ms while running, 1 s after exit check).
+ * The server does not support Range headers per the spec, so we fetch the full
+ * log and slice client-side, using ?tail=<remaining_cap> to bound response size.
  */
 
 import type { ProjectFile } from '../types';
@@ -99,11 +108,6 @@ export async function writeFiles(
 ): Promise<void> {
   await Promise.all(
     files.map(async (file) => {
-      // Strip leading slash from path, then encode each segment individually
-      // so that nested paths like src/App.tsx become src%2FApp.tsx — but the
-      // OpenAPI parameter is `{path}` with a wildcard (path-style), meaning
-      // the server expects the literal slash delimiters in the URL.
-      // We therefore just encode non-slash special chars.
       const encodedPath = file.path
         .replace(/^\/+/, '')
         .split('/')
@@ -132,15 +136,12 @@ export interface ProcessResult {
 
 /**
  * Run a command inside the sandbox and wait for it to exit.
- * Use this for install steps (npm install, pip install).
  *
- * The OpenAPI has no explicit "wait" flag — we POST to start the process
- * (returns immediately with a Process object), then poll the process logs
- * until exited_at != 0 or state != 'running'.
- *
- * NOTE: This is inferred from the OpenAPI (no explicit wait parameter in spec).
- * The spec's StartProcessRequest has no detach/wait field; we treat each
- * POST as "fire and track manually".
+ * Log streaming strategy (OpenAPI has no follow/SSE/WS for logs):
+ * - Poll GET /processes/{id}/logs every 200 ms
+ * - Track byteOffset client-side; slice new bytes from full response
+ * - Use ?tail=<cap> to bound the initial response (max 32 MiB per spec)
+ * - Simultaneously poll GET /processes (list) every 1 s to detect exit
  */
 export async function runCommand(
   id: string,
@@ -163,53 +164,71 @@ export async function runCommand(
 
   const procId = proc.id;
 
-  // Poll until process exits
-  let lastLogLength = 0;
-  for (let attempts = 0; attempts < 600; attempts++) {
-    await sleep(1000, signal);
+  let byteOffset = 0;
+  let lastStateCheck = 0;
 
-    // Fetch logs since last position
-    const logRes = await fetch(
-      `${API_BASE}/v1/sandboxes/${id}/processes/${procId}/logs`,
-      { headers: authHeaders(), signal },
-    );
-    if (logRes.ok) {
-      const logText = await logRes.text();
-      const newText = logText.slice(lastLogLength);
-      if (newText && onLog) {
+  for (let tick = 0; tick < 3000; tick++) {
+    // Log poll every 200 ms
+    await sleep(200, signal);
+
+    const logText = await fetchLogsTail(id, procId, signal);
+    if (logText !== null && logText.length > byteOffset) {
+      const newText = logText.slice(byteOffset);
+      byteOffset = logText.length;
+      if (onLog) {
         newText.split('\n').filter(Boolean).forEach(onLog);
       }
-      lastLogLength = logText.length;
     }
 
-    // Check process state
-    const statusRes = await fetch(
-      `${API_BASE}/v1/sandboxes/${id}/processes/${procId}`,
-      { headers: authHeaders(), signal },
-    );
-    if (!statusRes.ok) break;
-
-    // The spec lists process under ProcessList but not a single GET.
-    // We infer the process is done from non-zero exited_at by listing all.
-    // Actually the DELETE endpoint at /{proc_id} is "stop", there's no GET single.
-    // We'll use the logs endpoint as signal — when state is not running we stop.
-    // Use the state returned from startProcess polling approach:
-    // Re-fetch the process list and find our proc.
-    const listRes = await fetch(
-      `${API_BASE}/v1/sandboxes/${id}/processes`,
-      { headers: authHeaders(), signal },
-    );
-    if (!listRes.ok) break;
-
-    const list = await listRes.json() as { processes: Array<{ id: string; state: string; exit_code: number }> };
-    const current = list.processes.find((p) => p.id === procId);
-    if (!current) break; // process gone
-    if (current.state !== 'running') {
-      return { processId: procId, exitCode: current.exit_code, output: '' };
+    // State check every 1 s (every 5 ticks)
+    const now = Date.now();
+    if (now - lastStateCheck >= 1000) {
+      lastStateCheck = now;
+      const current = await findProcess(id, procId, signal);
+      if (!current) break; // process gone from list
+      if (current.state !== 'running') {
+        // Drain any remaining log bytes
+        const finalLog = await fetchLogsTail(id, procId, signal);
+        if (finalLog !== null && finalLog.length > byteOffset) {
+          const tail = finalLog.slice(byteOffset);
+          if (onLog) tail.split('\n').filter(Boolean).forEach(onLog);
+        }
+        return { processId: procId, exitCode: current.exit_code, output: '' };
+      }
     }
   }
 
   return { processId: procId, exitCode: -1, output: '' };
+}
+
+/**
+ * Stream logs from a long-running process (dev server, etc.) until the
+ * AbortSignal fires. Calls onChunk with each new text chunk as it arrives.
+ *
+ * Implementation: incremental polling GET /processes/{id}/logs every 500 ms.
+ * No WebSocket/SSE endpoint exists in the current OpenAPI spec for process logs.
+ * The PTY endpoint (/pty) is for interactive bidirectional terminals, not
+ * stdout/stderr capture.
+ */
+export async function streamLogs(
+  sandboxId: string,
+  procId: string,
+  onChunk: (line: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  let byteOffset = 0;
+
+  while (!signal.aborted) {
+    await sleep(500, signal).catch(() => null);
+    if (signal.aborted) break;
+
+    const text = await fetchLogsTail(sandboxId, procId, signal).catch(() => null);
+    if (text !== null && text.length > byteOffset) {
+      const newText = text.slice(byteOffset);
+      byteOffset = text.length;
+      newText.split('\n').filter(Boolean).forEach(onChunk);
+    }
+  }
 }
 
 /**
@@ -259,6 +278,50 @@ export async function killSandbox(id: string): Promise<void> {
   if (!res.ok && res.status !== 404) {
     const body = await res.text().catch(() => '');
     throw new SandboxError(res.status, body);
+  }
+}
+
+// ─── Internal helpers ────────────────────────────────────────────────────────
+
+/**
+ * Fetch the full log text for a process (returns null on error).
+ * Uses ?tail=33554432 (32 MiB, the spec max) to avoid silent truncation.
+ */
+async function fetchLogsTail(
+  sandboxId: string,
+  procId: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/v1/sandboxes/${sandboxId}/processes/${procId}/logs?tail=33554432`,
+      { headers: authHeaders(), signal },
+    );
+    if (!res.ok) return null;
+    return res.text();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find a process by ID in the process list. Returns null if not found.
+ */
+async function findProcess(
+  sandboxId: string,
+  procId: string,
+  signal?: AbortSignal,
+): Promise<{ id: string; state: string; exit_code: number } | null> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/v1/sandboxes/${sandboxId}/processes`,
+      { headers: authHeaders(), signal },
+    );
+    if (!res.ok) return null;
+    const list = await res.json() as { processes: Array<{ id: string; state: string; exit_code: number }> };
+    return list.processes.find((p) => p.id === procId) ?? null;
+  } catch {
+    return null;
   }
 }
 
