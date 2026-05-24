@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { ToastViewport } from '@talon-sandbox/react';
 import { TopBar } from './components/TopBar';
 import { FileTree } from './components/FileTree';
 import { Editor } from './components/Editor';
@@ -92,6 +93,7 @@ export default function App() {
           <Preview />
         </Panel>
       </PanelGroup>
+      <ToastViewport />
     </div>
   );
 }

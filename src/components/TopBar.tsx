@@ -1,5 +1,5 @@
 import { useState, useCallback, type ChangeEvent } from 'react';
-import { Button, Select, Dialog, toast, ToastViewport } from '@talon-sandbox/react';
+import { Button, Select, Dialog, toast } from '@talon-sandbox/react';
 import { useStore, buildShareUrl, clearDraft, SHARE_URL_WARN_LENGTH } from '../store';
 import { TEMPLATES, TEMPLATE_LABELS } from '../templates';
 import type { TemplateId } from '../types';
@@ -80,8 +80,6 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
 
   return (
     <>
-      <ToastViewport />
-
       <header
         className="flex items-center gap-3 px-4 h-12 bg-bg-1 border-b border-line shrink-0"
         role="banner"

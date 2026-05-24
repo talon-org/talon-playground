@@ -1,7 +1,8 @@
 import { useRef } from 'react';
-import { Button, StatusBadge } from '@talon-sandbox/react';
+import { Button, StatusBadge, type BadgeStatus } from '@talon-sandbox/react';
 import { useStore } from '../store';
 import { TEMPLATE_LABELS } from '../templates';
+import type { SandboxState } from '../types';
 
 export function Preview() {
   const { sandbox, project } = useStore((s) => ({
@@ -21,7 +22,7 @@ export function Preview() {
     }
   };
 
-  const statusMap: Record<string, 'running' | 'pending' | 'error'> = {
+  const statusMap: Partial<Record<SandboxState['status'], BadgeStatus>> = {
     running: 'running',
     starting: 'pending',
     error: 'error',
