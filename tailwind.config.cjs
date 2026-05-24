@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   presets: [require('@talon-sandbox/tokens/preset')],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
