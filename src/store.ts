@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import LZString from 'lz-string';
 import type { Project, SandboxState, TemplateId } from './types';
 import { TEMPLATES } from './templates';
 import {
@@ -17,29 +18,58 @@ interface StoreState {
   sandbox: SandboxState;
   /** True when editor has unsaved (un-run) changes. Reset on successful run. */
   dirty: boolean;
+  /** Autosave pending (debounce in flight) */
+  autosavePending: boolean;
+  /** Open file tabs (ordered list of file paths) */
+  openTabs: string[];
+  /** Currently active tab (= editor entry) */
+  activeTab: string;
+
   setActiveFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
   selectTemplate: (id: TemplateId) => void;
+  loadProject: (project: Project) => void;
+  serializeForShare: () => string;
   run: () => void;
   stop: () => void;
   dismissError: () => void;
   appendLog: (line: string) => void;
+
+  // Tab management
+  openFile: (path: string) => void;
+  closeTab: (path: string) => void;
+  setActiveTab: (path: string) => void;
 }
 
 // Keep the active AbortController so Stop can cancel ongoing work
 let activeController: AbortController | null = null;
 
-export const useStore = create<StoreState>((set, get) => ({
-  project: TEMPLATES.static,
-  dirty: false,
-  sandbox: {
+// Debounce timer for autosave
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+const DRAFT_KEY = 'talon-playground:draft';
+
+function resetSandboxState(): SandboxState {
+  return {
     status: 'idle',
     previewUrl: null,
     sandboxId: null,
     logs: [],
     phase: undefined,
     errorMessage: undefined,
-  },
+  };
+}
+
+const initialProject = TEMPLATES.static;
+const initialEntry = initialProject.entry;
+
+export const useStore = create<StoreState>((set, get) => ({
+  project: initialProject,
+  dirty: false,
+  autosavePending: false,
+  openTabs: [initialEntry],
+  activeTab: initialEntry,
+  sandbox: resetSandboxState(),
 
   setActiveFile: (path: string) => {
     set((state) => ({ project: { ...state.project, entry: path } }));
@@ -48,6 +78,7 @@ export const useStore = create<StoreState>((set, get) => ({
   updateFileContent: (path: string, content: string) => {
     set((state) => ({
       dirty: true,
+      autosavePending: true,
       project: {
         ...state.project,
         files: state.project.files.map((f) =>
@@ -55,21 +86,83 @@ export const useStore = create<StoreState>((set, get) => ({
         ),
       },
     }));
+
+    // Debounced autosave
+    if (autosaveTimer) clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      const { project } = get();
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(project));
+      } catch {
+        // Ignore quota errors silently
+      }
+      set({ autosavePending: false });
+      autosaveTimer = null;
+    }, 1000);
   },
 
   selectTemplate: (id: TemplateId) => {
+    const tpl = TEMPLATES[id];
     set({
-      project: TEMPLATES[id],
+      project: tpl,
       dirty: false,
-      sandbox: {
-        status: 'idle',
-        previewUrl: null,
-        sandboxId: null,
-        logs: [],
-        phase: undefined,
-        errorMessage: undefined,
-      },
+      autosavePending: false,
+      openTabs: [tpl.entry],
+      activeTab: tpl.entry,
+      sandbox: resetSandboxState(),
     });
+  },
+
+  loadProject: (project: Project) => {
+    set({
+      project,
+      dirty: false,
+      autosavePending: false,
+      openTabs: [project.entry],
+      activeTab: project.entry,
+      sandbox: resetSandboxState(),
+    });
+  },
+
+  serializeForShare: () => {
+    const { project } = get();
+    return JSON.stringify(project);
+  },
+
+  // Tab management
+  openFile: (path: string) => {
+    set((state) => {
+      const alreadyOpen = state.openTabs.includes(path);
+      return {
+        project: { ...state.project, entry: path },
+        activeTab: path,
+        openTabs: alreadyOpen ? state.openTabs : [...state.openTabs, path],
+      };
+    });
+  },
+
+  closeTab: (path: string) => {
+    set((state) => {
+      const tabs = state.openTabs.filter((t) => t !== path);
+      if (tabs.length === 0) {
+        return { openTabs: [], activeTab: '' };
+      }
+      // If the closed tab was active, switch to the last remaining tab
+      const nextActive =
+        state.activeTab === path ? tabs[tabs.length - 1] : state.activeTab;
+      return {
+        openTabs: tabs,
+        activeTab: nextActive,
+        project: { ...state.project, entry: nextActive },
+      };
+    });
+  },
+
+  setActiveTab: (path: string) => {
+    set((state) => ({
+      activeTab: path,
+      project: { ...state.project, entry: path },
+    }));
   },
 
   run: () => {
@@ -197,6 +290,63 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
   },
 }));
+
+// ─── Share URL helpers ────────────────────────────────────────────────────────
+
+export const SHARE_URL_WARN_LENGTH = 2000;
+
+export function buildShareUrl(serialized: string): string {
+  const compressed = LZString.compressToEncodedURIComponent(serialized);
+  const base =
+    import.meta.env.PROD
+      ? 'https://playground.sandbox.talon.net.cn'
+      : window.location.origin;
+  return `${base}/?p=${compressed}`;
+}
+
+export function parseShareParam(search: string): Project | null {
+  const params = new URLSearchParams(search);
+  const p = params.get('p');
+  if (!p) return null;
+  try {
+    const json = LZString.decompressFromEncodedURIComponent(p);
+    if (!json) return null;
+    const parsed = JSON.parse(json) as Project;
+    // Basic validation
+    if (!parsed.template || !Array.isArray(parsed.files) || !parsed.entry) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// ─── localStorage draft helpers ───────────────────────────────────────────────
+
+export const DRAFT_STORAGE_KEY = DRAFT_KEY;
+
+export function loadDraft(): Project | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Project;
+    if (!parsed.template || !Array.isArray(parsed.files) || !parsed.entry) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDraft(): void {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // Ignore
+  }
+}
 
 // ─── Async sandbox orchestration ─────────────────────────────────────────────
 

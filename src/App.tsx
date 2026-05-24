@@ -1,13 +1,55 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { TopBar } from './components/TopBar';
 import { FileTree } from './components/FileTree';
 import { Editor } from './components/Editor';
 import { Terminal } from './components/Terminal';
 import { Preview } from './components/Preview';
+import { useStore, parseShareParam, loadDraft, clearDraft } from './store';
 
 export default function App() {
   const [terminalVisible, setTerminalVisible] = useState(true);
+  const { loadProject, appendLog } = useStore((s) => ({
+    loadProject: s.loadProject,
+    appendLog: s.appendLog,
+  }));
+
+  useEffect(() => {
+    // 1. Try share URL first
+    const shared = parseShareParam(window.location.search);
+    if (shared) {
+      loadProject(shared);
+      // Clean up the URL without reload
+      const clean = window.location.origin + window.location.pathname;
+      window.history.replaceState(null, '', clean);
+      return;
+    }
+
+    // 2. Check for draft in localStorage (only if no share param)
+    const draft = loadDraft();
+    if (draft) {
+      const restore = window.confirm('发现未保存的草稿,是否恢复?');
+      if (restore) {
+        loadProject(draft);
+      } else {
+        clearDraft();
+        // Keep default template (already loaded)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Report share URL parse failures via terminal log
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('p');
+    if (p) {
+      const shared = parseShareParam(window.location.search);
+      if (!shared) {
+        appendLog('[error] share link invalid');
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">

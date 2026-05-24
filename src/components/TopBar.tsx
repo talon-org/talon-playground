@@ -1,6 +1,6 @@
-import type { ChangeEvent } from 'react';
-import { useStore } from '../store';
-import { TEMPLATE_LABELS } from '../templates';
+import { useState, useCallback, type ChangeEvent } from 'react';
+import { useStore, buildShareUrl, clearDraft, SHARE_URL_WARN_LENGTH } from '../store';
+import { TEMPLATES, TEMPLATE_LABELS } from '../templates';
 import type { TemplateId } from '../types';
 
 interface TopBarProps {
@@ -11,26 +11,59 @@ interface TopBarProps {
 const TEMPLATE_IDS = Object.keys(TEMPLATE_LABELS) as TemplateId[];
 
 export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
-  const { project, selectTemplate, run, stop, sandbox, dirty } = useStore((s) => ({
-    project: s.project,
-    selectTemplate: s.selectTemplate,
-    run: s.run,
-    stop: s.stop,
-    sandbox: s.sandbox,
-    dirty: s.dirty,
-  }));
+  const { project, selectTemplate, run, stop, sandbox, dirty, serializeForShare, loadProject, appendLog } =
+    useStore((s) => ({
+      project: s.project,
+      selectTemplate: s.selectTemplate,
+      run: s.run,
+      stop: s.stop,
+      sandbox: s.sandbox,
+      dirty: s.dirty,
+      serializeForShare: s.serializeForShare,
+      loadProject: s.loadProject,
+      appendLog: s.appendLog,
+    }));
+
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    const t = setTimeout(() => setToast(null), 3000);
+    return t;
+  }, []);
 
   const handleTemplateChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const newId = e.target.value as TemplateId;
-    // Task 6: confirm if editor has unsaved changes
     if (dirty) {
       const ok = window.confirm('切换模板会丢失当前修改，继续？');
-      if (!ok) {
-        // Reset select value visually by re-rendering (React controlled)
-        return;
-      }
+      if (!ok) return;
     }
     selectTemplate(newId);
+  };
+
+  const handleShare = async () => {
+    const json = serializeForShare();
+    const url = buildShareUrl(json);
+
+    if (url.length > SHARE_URL_WARN_LENGTH) {
+      appendLog(
+        `[warn] share URL is long (${url.length} chars), may not work in all browsers`,
+      );
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('已复制到剪贴板');
+    } catch {
+      showToast('复制失败,请手动复制');
+    }
+  };
+
+  const handleReset = () => {
+    const ok = window.confirm('重置会丢弃当前所有文件,确认?');
+    if (!ok) return;
+    clearDraft();
+    loadProject(TEMPLATES[project.template]);
   };
 
   const isStarting = sandbox.status === 'starting';
@@ -38,7 +71,6 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
   const isError = sandbox.status === 'error';
   const isBusy = isStarting || isRunning;
 
-  // Determine button mode
   let runButton: React.ReactNode;
   if (isBusy) {
     runButton = (
@@ -76,7 +108,7 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
   }
 
   return (
-    <header className="flex items-center gap-3 px-4 h-12 bg-gray-900 border-b border-gray-700 shrink-0">
+    <header className="flex items-center gap-3 px-4 h-12 bg-gray-900 border-b border-gray-700 shrink-0 relative">
       <span className="text-white font-semibold text-sm tracking-wide select-none">
         Talon Playground
       </span>
@@ -122,11 +154,30 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
 
       <button
         className="flex items-center gap-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1 rounded transition-colors"
-        aria-label="Share project"
-        onClick={() => alert('Share: W5 feature')}
+        aria-label="Reset project to template default"
+        onClick={handleReset}
+      >
+        Reset
+      </button>
+
+      <button
+        className="flex items-center gap-1 text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
+        aria-label="Share project URL"
+        onClick={() => void handleShare()}
       >
         Share
       </button>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute right-4 top-14 z-50 bg-green-700 text-white text-xs px-3 py-2 rounded shadow-lg pointer-events-none select-none"
+        >
+          {toast}
+        </div>
+      )}
     </header>
   );
 }
