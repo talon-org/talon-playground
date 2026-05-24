@@ -1,0 +1,4 @@
+packages:
+  - '.'
+  - '../talon-sandbox-ui/packages/react'
+  - '../talon-sandbox-ui/packages/tokens'

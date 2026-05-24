@@ -56,11 +56,10 @@ export function Editor() {
     }
   };
 
-  // No tabs open
   if (openTabs.length === 0) {
     return (
-      <div className="h-full w-full flex flex-col bg-gray-950">
-        <div className="flex-1 flex items-center justify-center text-gray-600 text-sm select-none">
+      <div className="h-full w-full flex flex-col bg-bg-0">
+        <div className="flex-1 flex items-center justify-center text-fg-4 text-sm select-none">
           选一个文件开始编辑
         </div>
       </div>
@@ -69,12 +68,12 @@ export function Editor() {
 
   return (
     <div
-      className="h-full w-full flex flex-col bg-gray-950"
+      className="h-full w-full flex flex-col bg-bg-0"
       onKeyDown={handleKeyDown}
     >
       {/* Tab bar */}
       <div
-        className="flex items-end bg-gray-900 border-b border-gray-700 shrink-0 overflow-x-auto"
+        className="flex items-end bg-bg-1 border-b border-line shrink-0 overflow-x-auto"
         role="tablist"
         aria-label="Open file tabs"
       >
@@ -87,18 +86,17 @@ export function Editor() {
               role="tab"
               aria-selected={isActive}
               className={[
-                'flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer border-r border-gray-700 shrink-0 max-w-[160px] group',
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer border-r border-line shrink-0 max-w-[160px] group',
                 isActive
-                  ? 'bg-gray-950 text-white border-t-2 border-t-blue-500'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-850 hover:text-gray-200',
+                  ? 'bg-bg-0 text-fg-0 border-t-2 border-t-acc'
+                  : 'bg-bg-1 text-fg-3 hover:bg-bg-hover hover:text-fg-1',
               ].join(' ')}
               onClick={() => setActiveTab(tabPath)}
               title={tabPath}
             >
-              {/* Autosave pending dot */}
               {isActive && autosavePending && (
                 <span
-                  className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0"
+                  className="w-1.5 h-1.5 rounded-full bg-warn shrink-0"
                   aria-label="Unsaved"
                   title="Saving..."
                 />
@@ -109,7 +107,7 @@ export function Editor() {
                   e.stopPropagation();
                   closeTab(tabPath);
                 }}
-                className="ml-auto shrink-0 text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity leading-none"
+                className="ml-auto shrink-0 text-fg-4 hover:text-fg-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity leading-none"
                 aria-label={`Close tab ${fileName}`}
                 tabIndex={0}
               >
@@ -133,7 +131,7 @@ export function Editor() {
             onMount={handleMount}
             options={{
               fontSize: 13,
-              fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+              fontFamily: '"JetBrains Mono", "Geist Mono", "Fira Code", monospace',
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
               renderLineHighlight: 'line',
@@ -143,7 +141,7 @@ export function Editor() {
             }}
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-600 text-sm select-none">
+          <div className="flex items-center justify-center h-full text-fg-4 text-sm select-none">
             选一个文件开始编辑
           </div>
         )}
@@ -152,5 +150,4 @@ export function Editor() {
   );
 }
 
-// Suppress unused import warning — loader is used indirectly by MonacoEditor
 void loader;

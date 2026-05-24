@@ -1,4 +1,5 @@
 import { useState, useCallback, type ChangeEvent } from 'react';
+import { Button, Select, Dialog, toast, ToastViewport } from '@talon-sandbox/react';
 import { useStore, buildShareUrl, clearDraft, SHARE_URL_WARN_LENGTH } from '../store';
 import { TEMPLATES, TEMPLATE_LABELS } from '../templates';
 import type { TemplateId } from '../types';
@@ -24,160 +25,196 @@ export function TopBar({ terminalVisible, onToggleTerminal }: TopBarProps) {
       appendLog: s.appendLog,
     }));
 
-  const [toast, setToast] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<TemplateId | null>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    const t = setTimeout(() => setToast(null), 3000);
-    return t;
-  }, []);
-
-  const handleTemplateChange = (e: ChangeEvent<HTMLSelectElement>) => {
+  const handleTemplateChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newId = e.target.value as TemplateId;
     if (dirty) {
-      const ok = window.confirm('切换模板会丢失当前修改，继续？');
-      if (!ok) return;
+      setPendingTemplate(newId);
+      setConfirmOpen(true);
+    } else {
+      selectTemplate(newId);
     }
-    selectTemplate(newId);
-  };
+  }, [dirty, selectTemplate]);
 
-  const handleShare = async () => {
+  const confirmTemplateSwitch = useCallback(() => {
+    if (pendingTemplate) {
+      selectTemplate(pendingTemplate);
+      setPendingTemplate(null);
+    }
+    setConfirmOpen(false);
+  }, [pendingTemplate, selectTemplate]);
+
+  const handleShare = useCallback(async () => {
     const json = serializeForShare();
     const url = buildShareUrl(json);
 
     if (url.length > SHARE_URL_WARN_LENGTH) {
-      appendLog(
-        `[warn] share URL is long (${url.length} chars), may not work in all browsers`,
-      );
+      appendLog(`[warn] share URL is long (${url.length} chars), may not work in all browsers`);
     }
 
     try {
       await navigator.clipboard.writeText(url);
-      showToast('已复制到剪贴板');
+      toast('已复制到剪贴板');
     } catch {
-      showToast('复制失败,请手动复制');
+      toast('复制失败,请手动复制');
     }
-  };
+  }, [serializeForShare, appendLog]);
 
-  const handleReset = () => {
-    const ok = window.confirm('重置会丢弃当前所有文件,确认?');
-    if (!ok) return;
+  const handleReset = useCallback(() => {
+    setResetConfirmOpen(true);
+  }, []);
+
+  const confirmReset = useCallback(() => {
     clearDraft();
     loadProject(TEMPLATES[project.template]);
-  };
+    setResetConfirmOpen(false);
+  }, [loadProject, project.template]);
 
   const isStarting = sandbox.status === 'starting';
   const isRunning = sandbox.status === 'running';
   const isError = sandbox.status === 'error';
   const isBusy = isStarting || isRunning;
 
-  let runButton: React.ReactNode;
-  if (isBusy) {
-    runButton = (
-      <button
-        onClick={stop}
-        className="flex items-center gap-1 text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors"
-        aria-label="Stop sandbox"
-      >
-        <span className="inline-block w-2 h-2 bg-white" aria-hidden="true" />
-        Stop
-      </button>
-    );
-  } else if (isError) {
-    runButton = (
-      <button
-        onClick={run}
-        className="flex items-center gap-1 text-xs bg-yellow-700 hover:bg-yellow-600 text-white px-3 py-1 rounded transition-colors"
-        aria-label="Retry run"
-      >
-        <span aria-hidden="true">&#8635;</span>
-        Retry
-      </button>
-    );
-  } else {
-    runButton = (
-      <button
-        onClick={run}
-        className="flex items-center gap-1 text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded transition-colors"
-        aria-label="Run project"
-      >
-        <span aria-hidden="true">&#9654;</span>
-        Run
-      </button>
-    );
-  }
-
   return (
-    <header className="flex items-center gap-3 px-4 h-12 bg-gray-900 border-b border-gray-700 shrink-0 relative">
-      <span className="text-white font-semibold text-sm tracking-wide select-none">
-        Talon Playground
-      </span>
+    <>
+      <ToastViewport />
 
-      <div className="flex items-center gap-1 ml-2">
-        <label htmlFor="template-select" className="text-gray-400 text-xs">
-          Template:
-        </label>
-        <select
-          id="template-select"
-          value={project.template}
-          onChange={handleTemplateChange}
-          disabled={isBusy}
-          className="bg-gray-800 text-gray-200 text-xs rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-        >
-          {TEMPLATE_IDS.map((id) => (
-            <option key={id} value={id}>
-              {TEMPLATE_LABELS[id]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Phase label shown while starting */}
-      {isStarting && sandbox.phase && (
-        <span className="text-yellow-400 text-xs animate-pulse select-none">
-          {sandbox.phase}
+      <header
+        className="flex items-center gap-3 px-4 h-12 bg-bg-1 border-b border-line shrink-0"
+        role="banner"
+      >
+        <span className="text-fg-0 font-semibold text-sm tracking-wide select-none">
+          Talon Playground
         </span>
-      )}
 
-      <div className="flex-1" />
-
-      <button
-        onClick={onToggleTerminal}
-        className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-        aria-pressed={terminalVisible}
-        aria-label="Toggle terminal"
-      >
-        Terminal {terminalVisible ? '[hide]' : '[show]'}
-      </button>
-
-      {runButton}
-
-      <button
-        className="flex items-center gap-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1 rounded transition-colors"
-        aria-label="Reset project to template default"
-        onClick={handleReset}
-      >
-        Reset
-      </button>
-
-      <button
-        className="flex items-center gap-1 text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
-        aria-label="Share project URL"
-        onClick={() => void handleShare()}
-      >
-        Share
-      </button>
-
-      {/* Toast notification */}
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="absolute right-4 top-14 z-50 bg-green-700 text-white text-xs px-3 py-2 rounded shadow-lg pointer-events-none select-none"
-        >
-          {toast}
+        <div className="flex items-center gap-1.5 ml-2">
+          <label htmlFor="template-select" className="text-fg-3 text-xs shrink-0">
+            Template:
+          </label>
+          <Select
+            id="template-select"
+            value={project.template}
+            onChange={handleTemplateChange}
+            disabled={isBusy}
+            size="sm"
+          >
+            {TEMPLATE_IDS.map((id) => (
+              <option key={id} value={id}>
+                {TEMPLATE_LABELS[id]}
+              </option>
+            ))}
+          </Select>
         </div>
-      )}
-    </header>
+
+        {isStarting && sandbox.phase && (
+          <span className="text-warn text-xs animate-pulse select-none">
+            {sandbox.phase}
+          </span>
+        )}
+
+        <div className="flex-1" />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleTerminal}
+          aria-pressed={terminalVisible}
+          aria-label="Toggle terminal"
+        >
+          Terminal {terminalVisible ? '[hide]' : '[show]'}
+        </Button>
+
+        {isBusy ? (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={stop}
+            aria-label="Stop sandbox"
+          >
+            <span className="inline-block w-2 h-2 bg-current mr-1" aria-hidden="true" />
+            Stop
+          </Button>
+        ) : isError ? (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={run}
+            aria-label="Retry run"
+          >
+            <span aria-hidden="true" className="mr-1">&#8635;</span>
+            Retry
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={run}
+            aria-label="Run project"
+          >
+            <span aria-hidden="true" className="mr-1">&#9654;</span>
+            Run
+          </Button>
+        )}
+
+        <Button
+          variant="default"
+          size="sm"
+          aria-label="Reset project to template default"
+          onClick={handleReset}
+        >
+          Reset
+        </Button>
+
+        <Button
+          variant="default"
+          size="sm"
+          aria-label="Share project URL"
+          onClick={() => void handleShare()}
+        >
+          Share
+        </Button>
+      </header>
+
+      {/* Template switch confirmation */}
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="切换模板"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>
+              取消
+            </Button>
+            <Button variant="danger" size="sm" onClick={confirmTemplateSwitch}>
+              继续切换
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-fg-1 text-sm">切换模板会丢失当前修改，确认继续？</p>
+      </Dialog>
+
+      {/* Reset confirmation */}
+      <Dialog
+        open={resetConfirmOpen}
+        onClose={() => setResetConfirmOpen(false)}
+        title="重置项目"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)}>
+              取消
+            </Button>
+            <Button variant="danger" size="sm" onClick={confirmReset}>
+              确认重置
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-fg-1 text-sm">重置会丢弃当前所有文件，确认？</p>
+      </Dialog>
+    </>
   );
 }

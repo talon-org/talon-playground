@@ -52,7 +52,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
+    <div className="flex flex-col h-screen bg-bg-0 text-fg-1">
       <TopBar
         terminalVisible={terminalVisible}
         onToggleTerminal={() => setTerminalVisible((v) => !v)}
@@ -65,7 +65,7 @@ export default function App() {
           <FileTree />
         </Panel>
 
-        <PanelResizeHandle className="w-1 bg-gray-700 hover:bg-blue-500 transition-colors cursor-col-resize" />
+        <PanelResizeHandle className="w-px bg-line hover:bg-acc transition-colors cursor-col-resize" />
 
         {/* Middle: Editor + Terminal */}
         <Panel defaultSize={44} minSize={20} className="min-h-0 min-w-0">
@@ -76,7 +76,7 @@ export default function App() {
 
             {terminalVisible && (
               <>
-                <PanelResizeHandle className="h-1 bg-gray-700 hover:bg-blue-500 transition-colors cursor-row-resize" />
+                <PanelResizeHandle className="h-px bg-line hover:bg-acc transition-colors cursor-row-resize" />
                 <Panel defaultSize={30} minSize={15} maxSize={60} className="min-h-0">
                   <Terminal />
                 </Panel>
@@ -85,7 +85,7 @@ export default function App() {
           </PanelGroup>
         </Panel>
 
-        <PanelResizeHandle className="w-1 bg-gray-700 hover:bg-blue-500 transition-colors cursor-col-resize" />
+        <PanelResizeHandle className="w-px bg-line hover:bg-acc transition-colors cursor-col-resize" />
 
         {/* Right: Preview */}
         <Panel defaultSize={40} minSize={20} className="min-h-0 min-w-0">

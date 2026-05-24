@@ -20,10 +20,10 @@ export function FileTree() {
 
   return (
     <nav
-      className="h-full flex flex-col bg-gray-900 text-gray-300 overflow-y-auto"
+      className="h-full flex flex-col bg-bg-1 text-fg-2 overflow-y-auto"
       aria-label="File tree"
     >
-      <div className="px-3 py-2 text-xs text-gray-500 uppercase tracking-widest font-semibold border-b border-gray-700">
+      <div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-widest font-semibold border-b border-line">
         Files
       </div>
       <ul className="flex-1 py-1">
@@ -36,14 +36,14 @@ export function FileTree() {
                 className={[
                   'w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs truncate transition-colors',
                   isActive
-                    ? 'bg-gray-700 text-white'
-                    : 'hover:bg-gray-800 text-gray-400 hover:text-gray-200',
+                    ? 'bg-bg-active text-fg-0'
+                    : 'hover:bg-bg-hover text-fg-3 hover:text-fg-1',
                 ].join(' ')}
                 aria-current={isActive ? 'page' : undefined}
                 title={file.path}
               >
                 <span
-                  className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] font-bold bg-gray-700 text-gray-300"
+                  className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] font-bold bg-bg-2 text-fg-2"
                   aria-hidden="true"
                 >
                   {fileIcon(file.path)}
