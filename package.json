@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
-    "@talon-sandbox/react": "workspace:*",
-    "@talon-sandbox/tokens": "workspace:*",
+    "@talon-sandbox/react": "^0.1.0",
+    "@talon-sandbox/tokens": "^0.1.0",
     "lz-string": "^1.5.0",
     "monaco-editor": "^0.50.0",
     "react": "^18.3.1",
