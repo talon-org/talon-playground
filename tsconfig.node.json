@@ -5,7 +5,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
-    "strict": true
+    "strict": true,
+    "lib": ["ES2020", "DOM"],
+    "types": ["vite/client"]
   },
   "include": ["vite.config.ts", "tailwind.config.js", "postcss.config.js"]
 }
