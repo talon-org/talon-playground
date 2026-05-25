@@ -1,0 +1,20 @@
+/*
+ * 本地 UI 包样式垫片 — 仅在 USE_LOCAL_UI=1 时由 vite.config.ts alias 生效。
+ *
+ * 等价于 @talon-sandbox/react/styles（dist/styles.css），后者在构建时由
+ * build-css.mjs 将下面 4 个来源合并成一个文件：
+ *   1. @talon-sandbox/tokens/dist/tokens.css
+ *   2. packages/react/src/styles/components.css
+ *   3. packages/react/src/styles/components-forms.css
+ *   4. packages/react/src/styles/components-table.css
+ *
+ * Vite 的 CSS @import 会走自身 resolver，可以解析 node_modules 路径。
+ */
+
+/* 设计 Token（线上版由 npm 安装，本地同样读 node_modules 已安装版本） */
+@import "@talon-sandbox/tokens/css";
+
+/* 组件样式 — 直接读 ui 包源码 */
+@import "../../../talon-sandbox-ui/packages/react/src/styles/components.css";
+@import "../../../talon-sandbox-ui/packages/react/src/styles/components-forms.css";
+@import "../../../talon-sandbox-ui/packages/react/src/styles/components-table.css";
