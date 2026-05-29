@@ -24,11 +24,10 @@ import type { ProjectFile } from '../types';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
+// BFF 代理路径：前端请求同源 /playground/api/*，由服务器侧注入 Authorization 后转发。
+// 本地开发可通过 VITE_PLAYGROUND_API_BASE 指向本地或远程 BFF 地址。
 const API_BASE: string =
-  (import.meta.env['VITE_SANDBOX_API_BASE'] as string | undefined) ?? '/api';
-
-const API_KEY: string =
-  (import.meta.env['VITE_SANDBOX_API_KEY'] as string | undefined) ?? '';
+  (import.meta.env['VITE_PLAYGROUND_API_BASE'] as string | undefined) ?? '/playground/api';
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -44,10 +43,10 @@ export class SandboxError extends Error {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// 前端不再持有 API Key，Authorization 由后端 BFF 层注入。
+// 此函数保留以维持调用点结构，仅返回空对象。
 function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`;
-  return headers;
+  return {};
 }
 
 async function checkResponse(res: Response): Promise<void> {
@@ -86,7 +85,7 @@ export interface SandboxInfo {
  */
 export async function createSandbox(signal?: AbortSignal): Promise<SandboxInfo> {
   const data = await jsonPost<{ id: string; preview_url?: string }>(
-    '/v1/sandboxes?wait=running&wait_timeout=60',
+    '/v1/sandboxes?wait=running&wait_timeout=60s',
     {
       network: 'open',
       ttl: '30m',
@@ -233,16 +232,25 @@ export async function streamLogs(
 /**
  * Spawn a long-running command (dev server, node server, flask).
  * POST to processes and return immediately — do NOT wait for exit.
+ *
+ * exposePorts 声明进程对外暴露的端口。这一步至关重要:它让 runc adapter 在进程
+ * 启动时建立 DNAT 映射(127.0.0.1:<hostPort> → sandbox:<port>),preview 反代才
+ * 能连到 dev server。不声明 → preview 502 "upstream unavailable"。
  */
 export async function spawnCommand(
   id: string,
   cmd: string,
+  exposePorts?: number[],
   signal?: AbortSignal,
 ): Promise<string> {
   const args = splitCommand(cmd);
+  const body: Record<string, unknown> = { command: args, cwd: '/workspace' };
+  if (exposePorts && exposePorts.length > 0) {
+    body['expose_ports'] = exposePorts;
+  }
   const proc = await jsonPost<{ id: string }>(
     `/v1/sandboxes/${id}/processes`,
-    { command: args, cwd: '/workspace' },
+    body,
     signal,
   );
   return proc.id;
@@ -250,7 +258,13 @@ export async function spawnCommand(
 
 /**
  * Expose a port via POST /v1/sandboxes/{id}/expose.
- * Returns the preview URL.
+ *
+ * 后端开了 subdomain preview 模式(SANDBOX_PREVIEW_DOMAIN_SUFFIX)时,返回的 URL
+ * 是 `https://<port>-<sandbox-id>.preview.<域名>` —— 每个 sandbox+端口一个独立子
+ * 域名(行业标准,CodeSandbox/Gitpod 同款)。子域名下 dev server 用默认 base="/"
+ * 跑,资源绝对路径天然正确;泛域名证书由 Caddy 自动签发。
+ *
+ * 这个 URL 已是完整可直接 iframe 的地址,前端不需要再改写。
  */
 export async function exposePort(
   id: string,

@@ -14,24 +14,17 @@
 pnpm install
 ```
 
-### 2. 配置 API Key
+### 2. 配置（零密钥）
 
-复制 `.env.example` 为 `.env`，填入你的 Sandbox API Key：
+前端不再持有 API Key。所有 Sandbox API 请求通过同源 BFF 代理路径 `/playground/api/v1/*` 发出，Authorization 由服务器侧注入，浏览器端不可见。
+
+**本地开发默认无需任何配置。** 若需直连 staging BFF，可复制 `.env.local.example` 为 `.env.local` 并按注释指引取消对应行注释：
 
 ```bash
-cp .env.example .env
+cp .env.local.example .env.local
 ```
 
-编辑 `.env`：
-
-```
-VITE_SANDBOX_API_BASE=https://api.sandbox.talon.net.cn
-VITE_SANDBOX_API_KEY=ask_your_actual_key_here
-```
-
-API Key 格式为 `ask_` 前缀。向 Talon 团队申请开发期 Key。
-
-**注意：** `.env` 已在 `.gitignore` 中，不会被提交。
+**注意：** `.env.local` 已在 `.gitignore` 中，不会被提交。
 
 ### 3. 启动开发服务器
 
@@ -47,7 +40,7 @@ Static HTML/CSS/JS 模板不调用 sandbox API，直接用 Blob URL 渲染预览
 
 ### 其他模板
 
-React + Vite、Vue + Vite、Node Express、Python Flask 模板需要有效的 API Key 才能运行。点击 Run 后会：
+React + Vite、Vue + Vite、Node Express、Python Flask 模板通过 BFF 代理调用 Sandbox API，无需在前端配置 Key。点击 Run 后会：
 
 1. 在 Talon Sandbox 上创建沙箱容器
 2. 写入项目文件

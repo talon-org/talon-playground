@@ -12,6 +12,7 @@ import {
   streamLogs,
   killSandbox,
 } from './runtime/sandboxClient';
+import type { ProjectFile } from './types';
 
 interface StoreState {
   project: Project;
@@ -350,6 +351,39 @@ export function clearDraft(): void {
 
 // ─── Async sandbox orchestration ─────────────────────────────────────────────
 
+// viteConfigFor 生成一份运行时 vite.config.ts,适配 subdomain preview 反代:
+//   - base 用默认 "/" —— subdomain 模式下 preview 域名根就是 dev server 根,
+//     绝对资源路径(/@vite/client、/src/main.tsx)天然正确,不需要前缀。
+//   - server.allowedHosts: true —— 反代后 Host 头是 preview 子域名,Vite 默认
+//     会拦非 localhost 的 Host(防 DNS rebinding),这里放开。
+//   - server.hmr.clientPort 443 + protocol wss —— HMR websocket 经同源 https
+//     反代,客户端要连 443 的 wss 而非容器内 5173。
+function viteConfigFor(template: 'react-vite' | 'vue-vite'): ProjectFile {
+  const plugin =
+    template === 'react-vite'
+      ? "import react from '@vitejs/plugin-react';"
+      : "import vue from '@vitejs/plugin-vue';";
+  const pluginCall = template === 'react-vite' ? 'react()' : 'vue()';
+  return {
+    path: 'vite.config.ts',
+    content: `import { defineConfig } from 'vite';
+${plugin}
+
+// 由 Talon Playground 运行时生成:subdomain preview 反代适配。
+export default defineConfig({
+  plugins: [${pluginCall}],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    allowedHosts: true,
+    hmr: { clientPort: 443, protocol: 'wss' },
+  },
+});
+`,
+  };
+}
+
 async function runSandbox(
   project: Project,
   appendLog: (line: string) => void,
@@ -378,6 +412,11 @@ async function runSandbox(
       case 'react-vite':
       case 'vue-vite': {
         port = 5173;
+        // preview 走 subdomain 模式(<port>-<id>.preview.<域名>),dev server 用默认
+        // base="/" 即可,资源绝对路径天然正确。但要覆写 vite.config 放开 allowedHosts
+        // (反代后 Host 是 preview 域名,Vite 默认会拦)+ 配 HMR 经同源 443 wss。
+        await writeFiles(id, [viteConfigFor(project.template)], signal);
+
         setPhase('Installing deps...');
         const installResult = await runCommand(
           id,
@@ -389,7 +428,12 @@ async function runSandbox(
           throw new Error(`npm install failed (exit ${installResult.exitCode})`);
         }
         setPhase('Starting dev server...');
-        const devProcId = await spawnCommand(id, 'npm run dev -- --host 0.0.0.0 --port 5173', signal);
+        const devProcId = await spawnCommand(
+          id,
+          'npm run dev -- --host 0.0.0.0 --port 5173',
+          [port],
+          signal,
+        );
         // Stream dev-server logs until stop is called
         void streamLogs(id, devProcId, (line) => appendLog(`[dev] ${line}`), signal);
         break;
@@ -408,7 +452,7 @@ async function runSandbox(
           throw new Error(`npm install failed (exit ${installResult.exitCode})`);
         }
         setPhase('Starting server...');
-        const nodeProcId = await spawnCommand(id, 'node index.js', signal);
+        const nodeProcId = await spawnCommand(id, 'node index.js', [port], signal);
         void streamLogs(id, nodeProcId, (line) => appendLog(`[server] ${line}`), signal);
         break;
       }
@@ -426,7 +470,7 @@ async function runSandbox(
           throw new Error(`pip install failed (exit ${pipResult.exitCode})`);
         }
         setPhase('Starting Flask app...');
-        const flaskProcId = await spawnCommand(id, 'python app.py', signal);
+        const flaskProcId = await spawnCommand(id, 'python app.py', [port], signal);
         void streamLogs(id, flaskProcId, (line) => appendLog(`[flask] ${line}`), signal);
         break;
       }
@@ -436,7 +480,7 @@ async function runSandbox(
       }
     }
 
-    // 4. Expose port
+    // 4. Expose port (signed token URL, rewritten to same-origin BFF path)
     setPhase('Exposing port...');
     const { url } = await exposePort(id, port, signal);
     appendLog(`[talon] preview URL: ${url}`);
