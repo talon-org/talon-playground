@@ -502,9 +502,13 @@ async function runSandbox(
       case 'flask': {
         port = 5000;
         setPhase('Installing deps...');
+        // sandbox 镜像是 Alpine,系统 Python 被 PEP 668 标记为 externally-managed,
+        // 直接 pip install 会被拒;镜像未装 venv/virtualenv,无法走虚拟环境。
+        // sandbox 是一次性隔离容器,"破坏系统 Python"无实际风险,故用
+        // --break-system-packages(与 baseimages/code-browser 镜像同款做法)。
         const pipResult = await runCommand(
           id,
-          'pip install -r requirements.txt',
+          'pip install --break-system-packages -r requirements.txt',
           (line) => appendLog(`[pip] ${line}`),
           signal,
         );
