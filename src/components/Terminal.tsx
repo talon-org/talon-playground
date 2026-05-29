@@ -72,7 +72,7 @@ export function Terminal() {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5 font-mono text-xs"
+        className="h-full overflow-y-auto px-3 py-2 space-y-0.5 font-mono text-xs"
         role="log"
         aria-label="Terminal output"
         aria-live="polite"

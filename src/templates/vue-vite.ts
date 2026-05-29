@@ -20,9 +20,9 @@ export const vueViteTemplate: Project = {
     "vue": "^3.4.29"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.0.5",
+    "@vitejs/plugin-vue": "^6.0.0",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^7.0.0"
   }
 }
 `,
