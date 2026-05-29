@@ -88,16 +88,32 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     }));
 
-    // Debounced autosave
+    // Debounced autosave + HMR 同步。
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
-      const { project } = get();
+      const { project, sandbox } = get();
+      // 1) 本地草稿持久化(localStorage)。
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify(project));
       } catch {
         // Ignore quota errors silently
       }
-      set({ autosavePending: false });
+      // 2) 热更新:已有 running sandbox(非 static)时,把改动的单个文件增量
+      //    PUT 进去 → Vite/dev server 监听到文件变化自动 HMR,**不重建 sandbox**。
+      //    这是 dev 体验的核心:改了就热更,不是每次保存都起新容器。
+      if (
+        sandbox.sandboxId &&
+        sandbox.status === 'running' &&
+        project.template !== 'static'
+      ) {
+        const file = project.files.find((f) => f.path === path);
+        if (file) {
+          void writeFiles(sandbox.sandboxId, [file]).catch(() => {
+            // 同步失败不打断编辑;下次保存或手动 Run 会补上。
+          });
+        }
+      }
+      set({ autosavePending: false, dirty: false });
       autosaveTimer = null;
     }, 1000);
   },
@@ -169,17 +185,34 @@ export const useStore = create<StoreState>((set, get) => ({
   run: () => {
     const { project, sandbox } = get();
 
+    // 已有 running sandbox 且非 static:Run/Cmd+S 走**热更新**而非重建 —— 把全部
+    // 文件同步进去,Vite/dev server 自动 HMR。改动其实在 updateFileContent 里已
+    // 增量同步过,这里再全量推一次兜底(确保没漏 + 给用户"已保存"反馈)。
+    // 只有无 sandbox / 换了模板 / 显式 stop 后才重建(走下面的完整流程)。
+    if (
+      sandbox.sandboxId &&
+      sandbox.status === 'running' &&
+      project.template !== 'static'
+    ) {
+      const sid = sandbox.sandboxId;
+      set({ dirty: false });
+      void writeFiles(sid, project.files).catch(() => {
+        // 同步失败不影响;用户可再 Run 或 stop 重建。
+      });
+      return;
+    }
+
     // Cancel any previous run
     if (activeController) {
       activeController.abort();
       activeController = null;
     }
-    // If there's an active sandbox, destroy it first (fire-and-forget)
-    if (sandbox.sandboxId) {
-      void killSandbox(sandbox.sandboxId);
-    }
+    // 旧 sandbox id 留给 runSandbox 在建新前 await 删掉(可靠删旧,见下)。
+    const oldSandboxId = sandbox.sandboxId;
 
     if (project.template === 'static') {
+      // static 不用 sandbox;若之前有真 sandbox,这里 fire-and-forget 删掉。
+      if (oldSandboxId) void killSandbox(oldSandboxId).catch(() => {});
       const htmlFile = project.files.find((f) => f.path === 'index.html');
       const cssFile = project.files.find((f) => f.path === 'style.css');
       const jsFile = project.files.find((f) => f.path === 'script.js');
@@ -250,7 +283,7 @@ export const useStore = create<StoreState>((set, get) => ({
       }));
     };
 
-    void runSandbox(project, appendLog, setPhase, setSandboxField, controller);
+    void runSandbox(project, appendLog, setPhase, setSandboxField, controller, oldSandboxId);
   },
 
   stop: () => {
@@ -390,10 +423,19 @@ async function runSandbox(
   setPhase: (phase: string) => void,
   setSandboxField: (partial: Partial<SandboxState>) => void,
   controller: AbortController,
+  oldSandboxId: string | null,
 ): Promise<void> {
   const { signal } = controller;
 
   try {
+    // 0. 重建前**可靠删旧**:await 等旧 sandbox 删完再建新,避免泄漏。
+    //    删失败(可能已不存在)不阻断,继续建新。
+    if (oldSandboxId) {
+      await killSandbox(oldSandboxId).catch(() => {
+        /* 已不存在/删除失败,继续 */
+      });
+    }
+
     // 1. Create sandbox
     setPhase('Creating sandbox...');
     const { id } = await createSandbox(signal);
